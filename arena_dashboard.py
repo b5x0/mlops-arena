@@ -238,8 +238,16 @@ with st.sidebar:
     st.markdown("---")
     sim_mode = st.selectbox("🏟️ Arena Simulation State", ["Live (MLflow)", "Mock: Optimal", "Mock: Degraded", "Mock: Drifted"], index=0)
 
-with st.spinner("Connecting to MLflow..."):
-    accuracy, drift_from_mlflow, run_id = get_latest_metrics(mlflow_uri)
+with st.sidebar:
+    st.markdown("---")
+    # Default to Mock: Optimal (index 1) so it doesn't hang on cloud load
+    sim_mode = st.selectbox("🏟️ Arena Simulation State", ["Live (MLflow)", "Mock: Optimal", "Mock: Degraded", "Mock: Drifted"], index=1)
+
+accuracy, drift_from_mlflow, run_id = None, False, "no-run"
+
+if sim_mode == "Live (MLflow)":
+    with st.spinner("Connecting to MLflow..."):
+        accuracy, drift_from_mlflow, run_id = get_latest_metrics(mlflow_uri)
 
 # Logic for Cloud Demo or Mock Selection
 if accuracy is None or "Mock" in sim_mode:
@@ -254,6 +262,7 @@ if accuracy is None or "Mock" in sim_mode:
         drift_from_mlflow = False
         run_id = "degraded-run-demo"
     else:
+        # Default fallback / Mock: Optimal
         st.info("☁️ **Cloud Demo Mode**: Optimal local run results.")
         accuracy = 0.5080
         drift_from_mlflow = False
