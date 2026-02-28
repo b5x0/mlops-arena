@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mlops-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - mlops-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  create-bucket:
+    image: minio/mc
+    container_name: minio_mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - mlops-network
+    entrypoint: >
+      /bin/sh -c " /usr/bin/mc config host add myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; /usr/bin/mc mb myminio/${MINIO_BUCKET} --ignore-existing; /usr/bin/mc policy set public myminio/${MINIO_BUCKET}; exit 0; "
+
+  mlflow:
+    build:
+      context: ./mlflow
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      create-bucket:
+        condition: service_completed_successfully
+    networks:
+      - mlops-network
+    command: >
+      mlflow server --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB} --default-artifact-root s3://${MINIO_BUCKET}/ --host 0.0.0.0 --port 5000
+
+  zenml:
+    image: zenmldocker/zenml-server:latest
+    container_name: zenml_server
+    ports:
+      - "8080:8080"
+    networks:
+      - mlops-network
+
+volumes:
+  postgres_data:
+  minio_data:
+
+
+networks:
+  mlops-network:
+    name: mlops-network
+    driver: bridge
