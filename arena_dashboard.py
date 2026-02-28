@@ -234,13 +234,30 @@ def get_latest_metrics(uri: str):
 if refresh:
     st.cache_data.clear()
 
+with st.sidebar:
+    st.markdown("---")
+    sim_mode = st.selectbox("🏟️ Arena Simulation State", ["Live (MLflow)", "Mock: Optimal", "Mock: Degraded", "Mock: Drifted"], index=0)
+
 with st.spinner("Connecting to MLflow..."):
     accuracy, drift_from_mlflow, run_id = get_latest_metrics(mlflow_uri)
 
-if accuracy is None:
-    st.info("☁️ **Cloud Demo Mode**: Live MLflow connection unreachable. Displaying cached final run metrics.")
-    accuracy = 0.5080
-    run_id = "c589d649-cloud-demo"
+# Logic for Cloud Demo or Mock Selection
+if accuracy is None or "Mock" in sim_mode:
+    if "Drifted" in sim_mode:
+        st.info("☁️ **Cloud Simulation**: Environment COMPROMISED.")
+        accuracy = 0.3240
+        drift_from_mlflow = True
+        run_id = "drift-alert-demo"
+    elif "Degraded" in sim_mode:
+        st.info("☁️ **Cloud Simulation**: Performance DEGRADED.")
+        accuracy = 0.4820
+        drift_from_mlflow = False
+        run_id = "degraded-run-demo"
+    else:
+        st.info("☁️ **Cloud Demo Mode**: Optimal local run results.")
+        accuracy = 0.5080
+        drift_from_mlflow = False
+        run_id = "c589d649-cloud-demo"
 
 drift_detected = drift_override or drift_from_mlflow
 xp = int(accuracy * 1000) + 100
