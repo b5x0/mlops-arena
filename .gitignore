@@ -1,1 +1,48 @@
+# Data (tracked by DVC, not Git)
 /data
+/cifar10_raw
+*.dvc.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+zen_env/
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MLflow local runs
+mlflow/mlruns/
+mlruns/
+
+# Evidently reports
+evidently_arena_report.html
+confusion_matrix.png
+
+# Environment files
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

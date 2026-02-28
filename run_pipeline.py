@@ -13,11 +13,15 @@ load_dotenv()
 # Crucial: MLflow needs to know where MinIO is from the HOST perspective.
 # Inside Docker it's http://minio:9000, but here it's http://localhost:9000.
 os.environ["MLFLOW_S3_ENDPOINT_URL"] = "http://localhost:9000"
-# Ensure AWS credentials are in the environment for boto3 (used by MLflow)
-if not os.getenv("AWS_ACCESS_KEY_ID"):
-    os.environ["AWS_ACCESS_KEY_ID"] = "admin"
-if not os.getenv("AWS_SECRET_ACCESS_KEY"):
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "password123"
+os.environ["AWS_ACCESS_KEY_ID"] = "admin"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "password123"
+os.environ["S3_USE_PATH_STYLE_ENDPOINT"] = "true"
+# Also set these for ZenML/Boto3 fallback
+os.environ["AWS_ENDPOINT_URL"] = "http://localhost:9000"
+os.environ["AWS_ENDPOINT_URL_S3"] = "http://localhost:9000"
+
+# Note: pipeline.py now contains a runtime monkeypatch to redirect 
+# 'host.docker.internal' to 'localhost' automatically.
 
 from pipeline import training_pipeline
 

@@ -10,6 +10,23 @@ Stack requirements:
 
 import os
 import csv
+import logging
+import botocore.endpoint
+
+# ---------------------------------------------------------
+# WINDOWS NETWORKING HOTFIX: Redirect host.docker.internal
+# ---------------------------------------------------------
+original_make_request = botocore.endpoint.Endpoint.make_request
+def patched_make_request(self, operation_model, request_dict):
+    if "request_dict" in locals() or "request_dict" in globals():
+        url = request_dict.get("url", "")
+        if "host.docker.internal" in url:
+            request_dict["url"] = url.replace("host.docker.internal", "localhost")
+    return original_make_request(self, operation_model, request_dict)
+botocore.endpoint.Endpoint.make_request = patched_make_request
+# ---------------------------------------------------------
+
+import pandas as pd
 import subprocess
 from typing import Tuple
 
@@ -35,10 +52,12 @@ def ensure_mlflow_env():
     load_dotenv()
     # Host-perspective endpoint
     os.environ["MLFLOW_S3_ENDPOINT_URL"] = "http://localhost:9000"
-    if not os.getenv("AWS_ACCESS_KEY_ID"):
-        os.environ["AWS_ACCESS_KEY_ID"] = "admin"
-    if not os.getenv("AWS_SECRET_ACCESS_KEY"):
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "password123"
+    os.environ["AWS_ACCESS_KEY_ID"] = "admin"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "password123"
+    # boto3 needs to know to use path addressing instead of virtual routing for minio
+    os.environ["S3_USE_PATH_STYLE_ENDPOINT"] = "true"
+    os.environ["AWS_ENDPOINT_URL"] = "http://localhost:9000"
+    os.environ["AWS_ENDPOINT_URL_S3"] = "http://localhost:9000"
 
 
 # ---------------------------------------------------------------------------
@@ -94,25 +113,58 @@ def preprocess_data(X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarra
 # ---------------------------------------------------------------------------
 
 @step(experiment_tracker="mlflow_tracker")
-def train_model(X_train: np.ndarray, y_train: np.ndarray) -> keras.Model:
+def train_model(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    epochs: int = 15,
+    batch_size: int = 64,
+    learning_rate: float = 0.001,
+    dropout_rate: float = 0.3,
+    filters_1: int = 32,
+    filters_2: int = 64,
+    filters_3: int = 128
+) -> keras.Model:
     """Trains a CNN with MLflow autologging."""
     ensure_mlflow_env()
     print("==> [train_model] Training CNN ...")
     mlflow.tensorflow.autolog()
+    mlflow.log_params({
+        "filters_1": filters_1,
+        "filters_2": filters_2,
+        "filters_3": filters_3,
+        "dropout_rate": dropout_rate
+    })
+
+    # Data Augmentation layer as part of the Sequential model to boost accuracy
+    data_augmentation = keras.Sequential([
+        layers.RandomFlip("horizontal"),
+        layers.RandomRotation(0.1),
+        layers.RandomZoom(0.1),
+    ])
 
     model = keras.Sequential([
         keras.Input(shape=(32, 32, 3)),
-        layers.Conv2D(32, (3, 3), activation="relu", padding="same"),
+        data_augmentation,
+        # Block 1
+        layers.Conv2D(filters_1, (3, 3), activation="relu", padding="same"),
         layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation="relu", padding="same"),
+        # Block 2
+        layers.Conv2D(filters_2, (3, 3), activation="relu", padding="same"),
         layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation="relu", padding="same"),
+        # Block 3
+        layers.Conv2D(filters_3, (3, 3), activation="relu", padding="same"),
+        layers.MaxPooling2D((2, 2)),
+        # Flatten & Dense
         layers.Flatten(),
-        layers.Dense(64, activation="relu"),
+        layers.Dense(128, activation="relu"),
+        layers.Dropout(dropout_rate),
         layers.Dense(10, activation="softmax")
     ])
-    model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-    model.fit(X_train, y_train, batch_size=64, epochs=5, validation_split=0.1)
+
+    optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
+    model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy"])
+    
+    model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
     
     # Register the model in the SAME step where it was logged by autolog
     print("==> [train_model] Registering model as 'cifar10_classifier' ...")

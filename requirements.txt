@@ -1,0 +1,11 @@
+zenml[server]
+mlflow
+tensorflow
+scikit-learn
+matplotlib
+seaborn
+Pillow
+python-dotenv
+dvc
+tensorboard
+boto3

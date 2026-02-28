@@ -42,7 +42,13 @@ _scripts = os.path.join(
     "Scripts" if sys.platform == "win32" else "bin",
 )
 _bin = os.path.join(_scripts, "zenml.exe" if sys.platform == "win32" else "zenml")
-ZENML = _bin if os.path.isfile(_bin) else "zenml"
+_fallback_bin = r"C:\Users\MSI\AppData\Roaming\Python\Python311\Scripts\zenml.exe"
+if os.path.isfile(_bin):
+    ZENML = _bin
+elif os.path.isfile(_fallback_bin):
+    ZENML = _fallback_bin
+else:
+    ZENML = "zenml"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -131,7 +137,10 @@ def main():
     
     # Logout/Login to ensure clean session
     run_cli(["logout"])
-    run_cli(["connect", "--url", zenml_url, "--username", zenml_user, "--password", zenml_password], check=True)
+    connect_cmd = ["connect", "--url", zenml_url, "--username", zenml_user]
+    if zenml_password:
+        connect_cmd.extend(["--password", zenml_password])
+    run_cli(connect_cmd, check=True)
 
     # Now use Python Client for registration
     client = Client()
